@@ -55,12 +55,21 @@ bool runOnBasicBlock(BasicBlock &B) {
 
     // Manipolazione delle istruzioni
     Instruction *NewInst = BinaryOperator::Create(
-        Instruction::Add, Inst1st.getOperand(0), Inst1st.getOperand(0));
+        Instruction::Add, Inst1st.getOperand(0), Inst1st.getOperand(1));
 
     NewInst->insertAfter(&Inst1st);
+
     // Si possono aggiornare le singole references separatamente?
     // Controlla la documentazione e prova a rispondere.
-    Inst1st.replaceAllUsesWith(NewInst);
+    // Inst1st.replaceAllUsesWith(NewInst);
+
+    Inst1st.use_begin()->getUser()->replaceUsesOfWith(&Inst1st, NewInst);
+
+    // CONDITIONAL REPLACEMENT:
+    // void Value::replaceUsesWithIf(Value *New, llvm::function_ref< bool(Use &U)> ShouldReplace)
+
+    // USER-WISE REPLACEMENT:
+    // bool User::replaceUsesOfWith(Value *from, value *to);
 
     return true;
   }
