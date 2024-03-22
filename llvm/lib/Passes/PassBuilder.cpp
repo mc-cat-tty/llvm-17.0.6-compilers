@@ -70,6 +70,7 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Transforms/Utils/TestPass.h"
+#include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/Analysis/TypeBasedAliasAnalysis.h"
 #include "llvm/Analysis/UniformityAnalysis.h"
 #include "llvm/CodeGen/HardwareLoops.h"
