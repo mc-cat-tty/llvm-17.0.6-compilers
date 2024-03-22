@@ -2,11 +2,12 @@
 #define LLVM_TRANSFORMS_TEST_PASS_H
 
 #include "llvm/IR/PassManager.h"
+#include "llvm/IR/Instructions.h"
 
 namespace llvm {
-	class TestPass : public PassInfoMixin<TestPass> {
-		public:
-			PreservedAnalyses run(Function &F, FunctionAnalysisManager &AM);
+	struct TestPass : public PassInfoMixin<TestPass> {
+    PreservedAnalyses run(Function&, FunctionAnalysisManager&);
+    PreservedAnalyses run(Module&, ModuleAnalysisManager&);
 	};
 }
 
