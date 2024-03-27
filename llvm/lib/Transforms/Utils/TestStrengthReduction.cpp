@@ -25,10 +25,8 @@ bool optimizeMul(Instruction &i) {
 
   errs() << "Found constant power of 2: " << c->getValue() << "\n";
 
-  auto *base = op1;
-  auto *exp = ConstantInt::get(c->getType(), c->getValue().logBase2());
-
-  auto *ni = BinaryOperator::CreateShl(base, exp);
+  auto *shiftBits = ConstantInt::get(c->getType(), c->getValue().logBase2());
+  auto *ni = BinaryOperator::CreateShl(op1, shiftBits);
   
   ni->insertAfter(&i);
   i.replaceAllUsesWith(ni);
@@ -45,5 +43,5 @@ PreservedAnalyses TestStrengthReduction::run(Function &f, FunctionAnalysisManage
     }
   }
 
-  return modified ? PreservedAnalyses::all() : PreservedAnalyses::none();
+  return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

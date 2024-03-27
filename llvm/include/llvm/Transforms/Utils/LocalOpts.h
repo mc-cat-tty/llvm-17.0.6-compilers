@@ -1,10 +1,10 @@
-#pragma once
-
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/PassManager.h>
+#include "llvm/IR/PassManager.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Constants.h"
 
 namespace llvm {
-  struct LocalOpts : public PassInfoMixin<LocalOpts> {
-    PreservedAnalyses run(Module&, ModuleAnalysisManager&);
-  };
-}
+	class LocalOpts : public PassInfoMixin<LocalOpts> {
+		public:
+			PreservedAnalyses run(Module &m, ModuleAnalysisManager &AM);
+	};
+} // nam
