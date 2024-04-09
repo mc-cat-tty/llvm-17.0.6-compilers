@@ -9,9 +9,11 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
-#include <map>
 #include <optional>
+#include <map>
+#include <unordered_map>
 #include <set>
+#include <unordered_set>
 
 using namespace llvm;
 
@@ -93,9 +95,13 @@ bool runOnBasicBlock(BasicBlock &B) {
  * udiv 16, 8 -> lshr 16, 3
 */
 bool optBasicSR(Instruction &I) {
-  auto OpCode = I.getOpcode();
+  auto opCode = I.getOpcode();
 
-  if (OpCode != Instruction::Mul and OpCode != Instruction::UDiv) return false;
+  if (
+    opCode != Instruction::Mul
+    and opCode != Instruction::UDiv
+    and opCode != Instruction::SDiv
+  ) return false;
 
   Value *Op1 = I.getOperand(0);
   Value *Op2 = I.getOperand(1);
@@ -108,13 +114,9 @@ bool optBasicSR(Instruction &I) {
       and not CI->isOne();
   };
 
-  if (OpCode == Instruction::Mul) {
-    if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
-    if (not isConstPowOf2(Op2)) return false;
-  }
-  else if (OpCode == Instruction::UDiv) {
-    if (not isConstPowOf2(Op2)) return false;
-  }
+  bool isCommutative = opCode == Instruction::Mul;
+  if (isCommutative and isConstPowOf2(Op1)) std::swap(Op1, Op2);
+  if (not isConstPowOf2(Op2)) return false;
 
   // If we reach this point, Op2 is always a constant integer, power of 2
   // The following code in hence invariant wrt operands order
@@ -125,8 +127,12 @@ bool optBasicSR(Instruction &I) {
   unsigned ShiftAmount = CI->getValue().logBase2();
 
   // Create a new shift instruction
-  Instruction::BinaryOps ShiftType = 
-    OpCode == Instruction::Mul ? Instruction::Shl : Instruction::LShr;
+  const std::unordered_map<Instruction::BinaryOps, Instruction::BinaryOps> opToShift = {
+    {Instruction::Mul, Instruction::Shl},
+    {Instruction::UDiv, Instruction::LShr},
+    {Instruction::SDiv, Instruction::AShr}
+  };
+  Instruction::BinaryOps ShiftType = opToShift.at(static_cast<Instruction::BinaryOps>(opCode));
   Instruction *ShiftInst = BinaryOperator::Create(
     ShiftType,
     Op1, ConstantInt::get(CI->getType(), ShiftAmount)
@@ -156,34 +162,45 @@ bool optBasicSR(Instruction &I) {
  * add 0, %0 => %0
 */
 bool optAlgId(Instruction &I) {
-  auto OpCode = I.getOpcode();
+  auto opCode = I.getOpcode();
 
-  if (OpCode != Instruction::Add and OpCode != Instruction::Mul) return false;
+  const std::unordered_set<Instruction::BinaryOps> admittedOps = {
+    Instruction::Add, Instruction::Mul,
+    Instruction::UDiv, Instruction::SDiv, 
+    Instruction::Shl, Instruction::AShr, Instruction::LShr
+  };
+
+  if (not I.isBinaryOp()) return false;
+
+  auto operation = static_cast<Instruction::BinaryOps>(opCode);
+  if (not admittedOps.count(operation)) return false;
 
   Value *Op1 = I.getOperand(0);
   Value *Op2 = I.getOperand(1);
   ConstantInt *CI = nullptr;
 
-  // Is the operator a neutral constant of the operation?
-  // CI is set to the constant neutral operand after this function call
-  // Warning: this lambda has a side effect
-  std::function<bool(Value*)> isNeutralConstant;
+  // {key, value} map that associates each operation to the neutral
+  // constant of the operation.
+  const std::unordered_map<Instruction::BinaryOps, unsigned> neutralOperand = {
+    {Instruction::Add, 0},
+    {Instruction::Mul, 1},
+    {Instruction::SDiv, 1},
+    {Instruction::UDiv, 1},
+    {Instruction::Shl, 0},
+    {Instruction::AShr, 0},
+    {Instruction::LShr, 0}
+  };
 
-  if (OpCode == Instruction::Mul) {
-    isNeutralConstant = [&CI] (Value *op) {
-      return (CI = dyn_cast<ConstantInt>(op))
-        and CI->isOne();
-    };
-  }
-    
-  if (OpCode == Instruction::Add) {
-    isNeutralConstant = [&CI] (Value *op) {
-      return (CI = dyn_cast<ConstantInt>(op))
-        and CI->isZero();
-    };
-  }
+  auto isNeutralConstant = [&CI, &operation, &neutralOperand] (Value *op) {
+    auto neutralConst = neutralOperand.at(operation);
 
-  if (isNeutralConstant(Op1)) std::swap(Op1, Op2);
+    return (CI = dyn_cast<ConstantInt>(op))
+      and CI->equalsInt(neutralConst);
+  };
+
+  bool isCommutative =
+    opCode == Instruction::Add or opCode == Instruction::Mul;
+  if (isCommutative and isNeutralConstant(Op1)) std::swap(Op1, Op2);
   if (not isNeutralConstant(Op2)) return false;
 
   // If we reach this point, Op2 is always a constant integer, neutral for the operation
@@ -212,9 +229,9 @@ bool optAlgId(Instruction &I) {
  * mul 31, 8 -> %1 = shl 8, 5; sub %1, 8
 */
 bool optAdvSR(Instruction &I) {
-  auto OpCode = I.getOpcode();
+  auto opCode = I.getOpcode();
 
-  if (OpCode != Instruction::Mul) return false;
+  if (opCode != Instruction::Mul) return false;
 
   Value *Op1 = I.getOperand(0);
   Value *Op2 = I.getOperand(1);
@@ -295,9 +312,9 @@ bool optAdvSR(Instruction &I) {
  * => %2 = add i32 %0, 20; [STUFF;] %4 = %0
 */
 bool optMultiInstr(Instruction &I) {
-  auto OpCode = I.getOpcode();
+  auto opCode = I.getOpcode();
 
-  if (OpCode != Instruction::Add and OpCode != Instruction::Sub) return false;
+  if (opCode != Instruction::Add and opCode != Instruction::Sub) return false;
 
   using OptimizableInstr = std::optional<std::pair<Value*, ConstantInt*>>;
   auto tryGetOperands = [](const Instruction &I) -> OptimizableInstr {
@@ -327,13 +344,13 @@ bool optMultiInstr(Instruction &I) {
   if (not PrevInstrOperands) return false;
 
   // Map of inverse operations
-  const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
+  const std::unordered_map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
     {Instruction::Add, Instruction::Sub},
     {Instruction::Sub, Instruction::Add}
   };
 
   bool areInverseOperations = 
-    InverseOperators.at(static_cast<Instruction::BinaryOps>(OpCode)) == PrevInstr->getOpcode();
+    InverseOperators.at(static_cast<Instruction::BinaryOps>(opCode)) == PrevInstr->getOpcode();
   if (not areInverseOperations) return false;
 
   bool haveSameConstant =
