@@ -3,7 +3,7 @@
 
 using namespace llvm;
 
-void definitionUsageChain(const User *i, unsigned spaces = 0, bool offsetted = false) {
+void walkDUChain(const User *i, unsigned spaces = 0, bool offsetted = false) {
   for (unsigned j = 0; j < spaces and not offsetted; j++) outs() << " ";
   const auto prevIndicatorSize = outs().tell();
   outs() << " ->"; i->print(outs());
@@ -13,7 +13,7 @@ void definitionUsageChain(const User *i, unsigned spaces = 0, bool offsetted = f
 
   offsetted = true;
   for (const User *user : i->users()) {
-    definitionUsageChain(user, spaces + indicatorIncrement, offsetted);
+    walkDUChain(user, spaces + indicatorIncrement, offsetted);
     outs() << "\n";
     offsetted = false;
   }
@@ -54,7 +54,7 @@ void run(const Instruction &i) {
       operands[j]->get()->print(outs());
       outs() << "\n";
     }
-    outs() << "Use chain:\n"; definitionUsageChain(&i); outs() << "\n";
+    outs() << "Use chain:\n"; walkDUChain(&i); outs() << "\n";
   }
   else {
     outs() << "No instruction operands\n";
