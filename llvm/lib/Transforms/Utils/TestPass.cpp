@@ -1,44 +1,45 @@
 #include "llvm/Transforms/Utils/TestPass.h"
 #include <array>
+#include <set>
 
 using namespace llvm;
 
 void walkDUChain(const User *i, unsigned spaces = 0, bool offsetted = false) {
-  for (unsigned j = 0; j < spaces and not offsetted; j++) outs() << " ";
-  const auto prevIndicatorSize = outs().tell();
-  outs() << " ->"; i->print(outs());
-  const auto indicatorIncrement = outs().tell() - prevIndicatorSize;
+  for (unsigned j = 0; j < spaces and not offsetted; j++) errs() << " ";
+  const auto prevIndicatorSize = errs().tell();
+  errs() << " ->"; i->print(errs());
+  const auto indicatorIncrement = errs().tell() - prevIndicatorSize;
 
   if (i->user_empty()) return;
 
   offsetted = true;
   for (const User *user : i->users()) {
     walkDUChain(user, spaces + indicatorIncrement, offsetted);
-    outs() << "\n";
+    errs() << "\n";
     offsetted = false;
   }
 }
 
 void run(const Instruction &i) {
-  outs() << "\n";
+  errs() << "\n";
   if (not i.getType()->isVoidTy()) {
-    i.printAsOperand(outs(), true);
-    outs() << "\n";
+    i.printAsOperand(errs(), true);
+    errs() << "\n";
   }
   else {
-    i.print(outs());
-    outs() << "\n";
+    i.print(errs());
+    errs() << "\n";
   }
 
   if (i.hasNUsesOrMore(1)) {
-    outs() << "Users: \n";
+    errs() << "Users: \n";
     for (const User *user : i.users()) {
-      user->print(outs());
-      outs() << "\n";
+      user->print(errs());
+      errs() << "\n";
     }
   }
   else {
-    outs() << "No Users\n";
+    errs() << "No Users\n";
   }
 
   std::array<const Use*, 2> operands;
@@ -49,28 +50,54 @@ void run(const Instruction &i) {
   }
 
   if (idx != 0) {
-    outs() << "Usees: \n";
+    errs() << "Usees: \n";
     for (unsigned j=0; j<idx; j++) {
-      operands[j]->get()->print(outs());
-      outs() << "\n";
+      operands[j]->get()->print(errs());
+      errs() << "\n";
     }
-    outs() << "Use chain:\n"; walkDUChain(&i); outs() << "\n";
+    errs() << "Use chain:\n"; walkDUChain(&i); errs() << "\n";
   }
   else {
-    outs() << "No instruction operands\n";
+    errs() << "No instruction operands\n";
+  }
+}
+
+void cfgWalk(BasicBlock &bb, std::set<BasicBlock*> &visited) {
+  if (visited.count(&bb)) return;
+
+  decltype(auto) branchInstr = bb.getTerminator();
+  if (not branchInstr) return;
+
+  visited.emplace(&bb);
+
+  errs() << "[";
+  bb.front().print(errs());
+  errs() << "; ";
+  bb.back().print(errs());
+  errs() << "] -> ";
+
+  for (int i=0, N = branchInstr->getNumSuccessors(); i<N; ++i) {
+    decltype(auto) successor = branchInstr->getSuccessor(i);
+    errs() << "[";
+    successor->front().print(errs());
+    errs() << "; ";
+    successor->back().print(errs());
+    errs() << "] ";
+  }
+
+  errs() << "\n";
+
+  for (int i=0, N = branchInstr->getNumSuccessors(); i<N; ++i) {
+    cfgWalk(*branchInstr->getSuccessor(i), visited);
   }
 }
 
 PreservedAnalyses TestPass::run(Function &f, FunctionAnalysisManager &am) {
   auto bbCounter = 0u, instrCounter = 0u, callInstrCounter = 0u;
 
-  errs()
-    << "Found function: " << f.getName()
-    << "( #args: " << std::distance(f.arg_begin(), f.arg_end()) << (f.isVarArg() ? "+*" : "") << " )"
-    << "{ #bb: " << bbCounter << ", #instr: " << instrCounter << ", #calls: " << callInstrCounter << " }"
-    << "\n";
+  errs() << "Function " << f.getName() << "\n";
 
-  outs() << "PRINTING UD-DU CHAINS\n";
+  errs() << "PRINTING UD-DU CHAINS\n";
   for (const auto &bb : f) {
     bbCounter++;
     for (const auto &i : bb) {
@@ -81,6 +108,16 @@ PreservedAnalyses TestPass::run(Function &f, FunctionAnalysisManager &am) {
       }
     }
   }
+
+  errs() << "PRINTING CFG WALK\n";
+  auto visited = std::set<BasicBlock*>{};
+  ::cfgWalk(f.getEntryBlock(), visited);
+
+  errs()
+  << "Stats for function " << f.getName() << ": "
+  << "( #args: " << std::distance(f.arg_begin(), f.arg_end()) << (f.isVarArg() ? "+*" : "") << " )"
+  << "{ #bb: " << bbCounter << ", #instr: " << instrCounter << ", #calls: " << callInstrCounter << " }"
+  << "\n";
   
 	return PreservedAnalyses::all();
 }
