@@ -6,6 +6,6 @@
 
 using namespace llvm;
 
-struct LoopWalk : public PassInfoMixin<LoopWalk> {
+struct LoopICM : public PassInfoMixin<LoopICM> {
   PreservedAnalyses run(Loop&, LoopAnalysisManager&, LoopStandardAnalysisResults&, LPMUpdater&);
 };
