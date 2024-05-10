@@ -37,13 +37,15 @@ void licmOptimize(Loop &l) {
 
   auto loopInvariantInstructions = unordered_set<Instruction*>{};
 
+  // Be aware that this lambda marks phi-instructions as loop-invariant
   auto isOperandLI = [&l, &loopInvariantInstructions] (const Use &usee) {
     if (dyn_cast<Constant>(usee)) return true;
+    if (dyn_cast<Argument>(usee)) return true;
     
     decltype(auto) i = dyn_cast<Instruction>(usee);
-    // TODO: debug why params are considered inside the loop
-    if (i and not l.contains(i)) return true;
+    
     if (i and loopInvariantInstructions.count(i)) return true;
+    if (i and not l.contains(i)) return true;
 
     return false;
   };
@@ -57,6 +59,7 @@ void licmOptimize(Loop &l) {
       if (isInstrLI) loopInvariantInstructions.insert(&i);
     }
   }
+
 
   for (const auto *i : loopInvariantInstructions) {
     i->print(errs());
