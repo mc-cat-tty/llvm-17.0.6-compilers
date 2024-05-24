@@ -119,6 +119,7 @@
 #include "llvm/Transforms/IPO/Inliner.h"
 #include "llvm/Transforms/IPO/Internalize.h"
 #include "llvm/Transforms/IPO/LoopExtractor.h"
+#include "llvm/Transforms/Utils/LoopFusion.h"
 #include "llvm/Transforms/Utils/LoopICM.h"
 #include "llvm/Transforms/IPO/LowerTypeTests.h"
 #include "llvm/Transforms/IPO/MemProfContextDisambiguation.h"
